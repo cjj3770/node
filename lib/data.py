@@ -502,19 +502,61 @@ def fetch_SHELTER(path):
         'Transfer': 4,
         'Died': 1
     }
-    X_train, X_val, y_train, y_val = train_test_split(X, Y, test_size=0.10, random_state=0)
-
-    #categorical embedding for columns having more than two values
-    embedded_cols = {n: len(col.cat.categories) for n,col in X.items() if len(col.cat.categories) > 2}
-    embedded_col_names = embedded_cols.keys()
-    #embedding_sizes = [(n_categories, min(50, (n_categories+1)//2)) for _,n_categories in embedded_cols.items()]
-
-    
+    X_train, X_val, y_train, y_val = train_test_split(X, Y, test_size=0.33, random_state=0)
 
     return dict(
-        X_train=X_train.drop(columns=embedded_col_names).copy().values.astype(np.float32), y_train=y_train,
-        X_valid=X_val.drop(columns=embedded_col_names).copy().values.astype(np.float32) , y_valid=y_val,
-        X_test=test_processed.drop(columns=embedded_col_names).copy().values.astype(np.float32), y_test=np.zeros(len(test_processed))
+        X_train=X_train.values.astype(np.float32), y_train=y_train,
+        X_valid=X_val.values.astype(np.float32) , y_valid=y_val,
+        X_test=test_processed.values.astype(np.float32), y_test=np.zeros(len(test_processed))
+    )
+
+def fetch_ADULT(path):
+    train_path = os.path.join(path, 'adult.csv')
+
+    if not all(os.path.exists(fname) for fname in (train_path)):
+        os.makedirs(path, exist_ok=True)
+        train_archive_path = os.path.join(path, 'adult.zip')
+        gdd.download_file_from_google_drive(file_id='1_gsKRhFKae2JIfkGjeKNPifI-5LAt_TS',
+                                    dest_path=train_archive_path,
+                                    unzip=True)
+    
+    df = pd.read_csv(train_path)
+
+    labels = df.pop('<=50K')
+
+    X_train, X_test = df[:26049].copy(), df[26049:].copy()
+    y_train, y_test = labels[:26049].copy(), labels[26049:].copy()
+
+    X_train, X_val, y_train, y_val = train_test_split(X_train,
+                                                  y_train,
+                                                  test_size=0.2)
+
+    class_to_int = {c: i for i, c in enumerate(y_train.unique())}                                                                                                               
+    y_train_int = [class_to_int[v] for v in y_train]                                                                                                                            
+    y_val_int = [class_to_int[v] for v in y_val] 
+    y_test_int = [class_to_int[v] for v in y_test]
+    cat_features = ['workclass', 'education', 'marital-status',
+                    'occupation', 'relationship', 'race', 'sex',
+                    'native-country']
+  
+    cat_encoder = LeaveOneOutEncoder()
+    cat_encoder.fit(X_train[cat_features], y_train_int)
+    X_train[cat_features] = cat_encoder.transform(X_train[cat_features])
+    X_val[cat_features] = cat_encoder.transform(X_val[cat_features])
+    X_test[cat_features] = cat_encoder.transform(X_test[cat_features])
+
+    # Node is going to want to have the values as float32 at some points
+    X_train = X_train.values.astype('float32')
+    X_val = X_val.values.astype('float32')
+    X_test = X_test.values.astype('float32')
+    y_train = np.array(y_train_int)
+    y_val = np.array(y_val_int)
+    y_test = np.array(y_test_int)
+    
+    return dict(
+        X_train=X_train, y_train=y_train,
+        X_valid=X_val, y_valid=y_val,
+        X_test=X_test, y_test=y_test,
     )
 
 DATASETS = {
@@ -527,4 +569,5 @@ DATASETS = {
     'YAHOO': fetch_YAHOO,
     'CLICK': fetch_CLICK,
     'SHELTER': fetch_SHELTER,
+    'ADULT': fetch_ADULT,
 }
