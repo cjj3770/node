@@ -3,11 +3,14 @@ import bz2
 import numpy as np
 import pandas as pd
 import gzip
+import zipfile
 import shutil
 import torch
 import random
 import warnings
 
+from collections import Counter
+from sklearn.preprocessing import LabelEncoder
 from sklearn.model_selection import train_test_split
 
 from .utils import download
@@ -436,6 +439,88 @@ def fetch_CLICK(path, valid_size=100_000, validation_seed=None):
     )
 
 
+def unzip_file(zip_src, dst_dir):
+    r = zipfile.is_zipfile(zip_src)
+    if r:     
+        fz = zipfile.ZipFile(zip_src, 'r')
+        for file in fz.namelist():
+            fz.extract(file, dst_dir)  
+        #fz.close()     
+    else:
+        print('This is not zip')
+
+def fetch_SHELTER(path, valid_size=100_000, validation_seed=None):
+    # based on: https://www.kaggle.com/c/shelter-animal-outcomes/data
+    #https://jovian.ml/aakanksha-ns/shelter-outcome
+
+    train_path = os.path.join(path, 'train.csv')
+    test_path = os.path.join(path, 'test.csv')
+    if not all(os.path.exists(fname) for fname in (train_path, test_path)):
+        os.makedirs(path, exist_ok=True)
+        train_archive_path = os.path.join(path, 'train.zip')
+        test_archive_path = os.path.join(path, 'test.zip')
+        if not all(os.path.exists(fname) for fname in (train_archive_path, test_archive_path)):
+            download("https://www.dropbox.com/s/mngrbhdu6xa4ovc/train.zip?dl=0", train_archive_path)
+            download("https://www.dropbox.com/s/19zrg9lfvrq7m5y/test.zip?dl=0", test_archive_path)
+
+
+        unzip_file(train_archive_path,path)
+        unzip_file(test_archive_path,path)
+
+    
+    train = pd.read_csv(train_path)
+    test = pd.read_csv(test_path)
+    train_X = train.drop(columns= ['OutcomeType', 'OutcomeSubtype', 'AnimalID'])
+    Y = train['OutcomeType']
+    test_X = test
+    stacked_df = train_X.append(test_X.drop(columns=['ID']))
+    stacked_df = stacked_df.drop(columns=['DateTime'])
+    for col in stacked_df.columns:
+        if stacked_df[col].isnull().sum() > 10000:
+            #print("dropping", col, stacked_df[col].isnull().sum())
+            stacked_df = stacked_df.drop(columns = [col])
+
+    for col in stacked_df.columns:
+        if stacked_df.dtypes[col] == "object":
+            stacked_df[col] = stacked_df[col].fillna("NA")
+        else:
+            stacked_df[col] = stacked_df[col].fillna(0)
+        stacked_df[col] = LabelEncoder().fit_transform(stacked_df[col])
+
+    for col in stacked_df.columns:
+        stacked_df[col] = stacked_df[col].astype('category')
+
+
+    X = stacked_df[0:26729]
+    test_processed = stacked_df[26729:]
+
+    Y = LabelEncoder().fit_transform(Y)
+
+    #sanity check to see numbers match and matching with previous counter to create target dictionary
+    #print(Counter(train['OutcomeType']))
+    #print(Counter(Y))
+    target_dict = {
+        'Return_to_owner' : 3,
+        'Euthanasia': 2,
+        'Adoption': 0,
+        'Transfer': 4,
+        'Died': 1
+    }
+    X_train, X_val, y_train, y_val = train_test_split(X, Y, test_size=0.10, random_state=0)
+
+    #categorical embedding for columns having more than two values
+    embedded_cols = {n: len(col.cat.categories) for n,col in X.items() if len(col.cat.categories) > 2}
+    embedded_col_names = embedded_cols.keys()
+    #embedding_sizes = [(n_categories, min(50, (n_categories+1)//2)) for _,n_categories in embedded_cols.items()]
+
+    
+
+    return dict(
+        X_train=X_train.drop(columns=embedded_col_names).copy().values.astype(np.float32), y_train=y_train,
+        X_valid=X_val.drop(columns=embedded_col_names).copy().values.astype(np.float32) , y_valid=y_val,
+        X_test=test_processed.drop(columns=embedded_col_names).copy().values.astype(np.float32), y_test=np.zeros(len(test_processed))
+    )
+
 DATASETS = {
     'A9A': fetch_A9A,
     'EPSILON': fetch_EPSILON,
@@ -445,4 +530,5 @@ DATASETS = {
     'MICROSOFT': fetch_MICROSOFT,
     'YAHOO': fetch_YAHOO,
     'CLICK': fetch_CLICK,
+    'SHELTER': fetch_SHELTER,
 }
