@@ -18,6 +18,7 @@ from sklearn.datasets import load_svmlight_file
 from sklearn.preprocessing import QuantileTransformer
 from category_encoders import LeaveOneOutEncoder
 
+from google_drive_downloader import GoogleDriveDownloader as gdd
 
 class Dataset:
 
@@ -439,17 +440,9 @@ def fetch_CLICK(path, valid_size=100_000, validation_seed=None):
     )
 
 
-def unzip_file(zip_src, dst_dir):
-    r = zipfile.is_zipfile(zip_src)
-    if r:     
-        fz = zipfile.ZipFile(zip_src, 'r')
-        for file in fz.namelist():
-            fz.extract(file, dst_dir)  
-        #fz.close()     
-    else:
-        print('This is not zip')
 
-def fetch_SHELTER(path, valid_size=100_000, validation_seed=None):
+
+def fetch_SHELTER(path):
     # based on: https://www.kaggle.com/c/shelter-animal-outcomes/data
     #https://jovian.ml/aakanksha-ns/shelter-outcome
 
@@ -459,13 +452,16 @@ def fetch_SHELTER(path, valid_size=100_000, validation_seed=None):
         os.makedirs(path, exist_ok=True)
         train_archive_path = os.path.join(path, 'train.zip')
         test_archive_path = os.path.join(path, 'test.zip')
-        if not all(os.path.exists(fname) for fname in (train_archive_path, test_archive_path)):
-            download("https://www.dropbox.com/s/mngrbhdu6xa4ovc/train.zip?dl=0", train_archive_path)
-            download("https://www.dropbox.com/s/19zrg9lfvrq7m5y/test.zip?dl=0", test_archive_path)
+        gdd.download_file_from_google_drive(file_id='15fHBRQM5ztc1LUiAhPiYTOggi5lyw4C-',
+                                    dest_path=train_archive_path,
+                                    unzip=True)
+        gdd.download_file_from_google_drive(file_id='1I0QqJOUM_lhAdcUZnmninHEqi68nMeju',
+                                    dest_path=test_archive_path,
+                                    unzip=True)
+        #if not all(os.path.exists(fname) for fname in (train_archive_path, test_archive_path)):
+            #download("https://www.dropbox.com/s/mngrbhdu6xa4ovc/train.zip?dl=0", train_archive_path)
+            #download("https://www.dropbox.com/s/19zrg9lfvrq7m5y/test.zip?dl=0", test_archive_path)
 
-
-        unzip_file(train_archive_path,path)
-        unzip_file(test_archive_path,path)
 
     
     train = pd.read_csv(train_path)
